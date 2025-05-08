@@ -1,0 +1,56 @@
+Javascript
+
+{
+  "users": {
+    "<userId>": {
+      "email": "string",
+      "acceptedTerms": "boolean",
+      "role": "passenger | driver | admin"
+    }
+  },
+  "drivers": {
+    "<driverId>": {
+      "available": "boolean",
+      "lastManualAck": "timestamp"
+    }
+  },
+  "rides": {
+    "<rideId>": {
+      "userId": "string",
+      "driverId": "string",
+      "location": "GeoPoint",
+      "status": "pending | assigned | accepted | completed",
+      "fare": "number",
+      "dropOffExtension": "boolean",
+      "eta": "string",
+      "timestamp": "timestamp"
+    }
+  },
+  "snacks": {
+    "<snackId>": {
+      "name": "string",
+      "price": "number"
+    }
+  },
+  "gps_spots": {
+    "<spotId>": {
+      "name": "string",
+      "location": "GeoPoint"
+    }
+  },
+  "orders": {
+    "<orderId>": {
+      "userId": "string",
+      "snackId": "string",
+      "price": "number",
+      "timestamp": "timestamp"
+    }
+  },
+  "notifications": {
+    "<notificationId>": {
+      "userId": "string",
+      "message": "string",
+      "timestamp": "timestamp"
+    }
+  }
+}
