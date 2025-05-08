@@ -1,0 +1,40 @@
+const functions = require('firebase-functions');
+const admin = require('firebase-admin');
+admin.initializeApp();
+
+exports.matchRide = functions.firestore
+  .document('rides/{rideId}')
+  .onCreate(async (snap, context) => {
+    const ride = snap.data();
+    const drivers = await admin.firestore().collection('drivers').where('available', '==', true).get();
+    if (!drivers.empty) {
+      const driver = drivers.docs[0];
+      await admin.firestore().collection('rides').doc(snap.id).update({
+        driverId: driver.id,
+        status: 'assigned',
+      });
+      await admin.firestore().collection('notifications').add({
+        userId: ride.userId,
+        message: `Ride assigned to driver ${driver.id}!`,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+  });
+
+exports.calculateETA = functions.firestore
+  .document('rides/{rideId}')
+  .onUpdate(async (change, context) => {
+    const ride = change.after.data();
+    if (ride.status === 'assigned') {
+      // Simulate ETA with Google Maps API (replace with real API call)
+      const eta = '5 minutes'; // Placeholder
+      await admin.firestore().collection('rides').doc(context.params.rideId).update({
+        eta: eta,
+      });
+      await admin.firestore().collection('notifications').add({
+        userId: ride.userId,
+        message: `ETA: ${eta}`,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+  });
