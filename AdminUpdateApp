@@ -1,0 +1,143 @@
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+class AdminDashboardScreen extends StatefulWidget {
+  @override
+  _AdminDashboardScreenState createState() => _AdminDashboardScreenState();
+}
+
+class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final TextEditingController _snackNameController = TextEditingController();
+  final TextEditingController _snackPriceController = TextEditingController();
+  final TextEditingController _spotNameController = TextEditingController();
+  final TextEditingController _spotLatController = TextEditingController();
+  final TextEditingController _spotLngController = TextEditingController();
+
+  // Add or update snack
+  void _addSnack() async {
+    await _firestore.collection('snacks').add({
+      'name': _snackNameController.text,
+      'price': double.parse(_snackPriceController.text),
+    });
+    _snackNameController.clear();
+    _snackPriceController.clear();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Snack added!')));
+  }
+
+  // Add or update GPS spot
+  void _addSpot() async {
+    await _firestore.collection('gps_spots').add({
+      'name': _spotNameController.text,
+      'location': GeoPoint(
+        double.parse(_spotLatController.text),
+        double.parse(_spotLngController.text),
+      ),
+    });
+    _spotNameController.clear();
+    _spotLatController.clear();
+    _spotLngController.clear();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('GPS spot added!')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('AirBear Admin', style: TextStyle(color: Colors.white)),
+        backgroundColor: Theme.of(context).primaryColor,
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Manage Snacks', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            TextField(
+              controller: _snackNameController,
+              decoration: InputDecoration(labelText: 'Snack Name'),
+            ),
+            TextField(
+              controller: _snackPriceController,
+              decoration: InputDecoration(labelText: 'Price'),
+              keyboardType: TextInputType.number,
+            ),
+            SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _addSnack,
+              child: Text('Add Snack'),
+              style: ElevatedButton.styleFrom(
+                primary: Theme.of(context).primaryColor,
+                minimumSize: Size(double.infinity, 50),
+              ),
+            ),
+            SizedBox(height: 32),
+            Text('Manage GPS Spots', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            TextField(
+              controller: _spotNameController,
+              decoration: InputDecoration(labelText: 'Spot Name'),
+            ),
+            TextField(
+              controller: _spotLatController,
+              decoration: InputDecoration(labelText: 'Latitude'),
+              keyboardType: TextInputType.number,
+            ),
+            TextField(
+              controller: _spotLngController,
+              decoration: InputDecoration(labelText: 'Longitude'),
+              keyboardType: TextInputType.number,
+            ),
+            SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _addSpot,
+              child: Text('Add GPS Spot'),
+              style: ElevatedButton.styleFrom(
+                primary: Theme.of(context).primaryColor,
+                minimumSize: Size(double.infinity, 50),
+              ),
+            ),
+            SizedBox(height: 32),
+            Text('Current Snacks', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            StreamBuilder<QuerySnapshot>(
+              stream: _firestore.collection('snacks').snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return CircularProgressIndicator();
+                var snacks = snapshot.data!.docs;
+                return ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: snacks.length,
+                  itemBuilder: (context, index) {
+                    var snack = snacks[index];
+                    return ListTile(
+                      title: Text('${snack['name']} - \$${snack['price']}'),
+                    );
+                  },
+                );
+              },
+            ),
+            SizedBox(height: 32),
+            Text('Current GPS Spots', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            StreamBuilder<QuerySnapshot>(
+              stream: _firestore.collection('gps_spots').snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return CircularProgressIndicator();
+                var spots = snapshot.data!.docs;
+                return ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: spots.length,
+                  itemBuilder: (context, index) {
+                    var spot = spots[index];
+                    return ListTile(
+                      title: Text(spot['name']),
+                      subtitle: Text('Lat: ${spot['location'].latitude}, Lng: ${spot['location'].longitude}'),
+                    );
+                  },
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
