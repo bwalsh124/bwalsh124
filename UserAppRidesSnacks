@@ -1,0 +1,231 @@
+dart
+
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
+
+class UserHomeScreen extends StatefulWidget {
+  @override
+  _UserHomeScreenState createState() => _UserHomeScreenState();
+}
+
+class _UserHomeScreenState extends State<UserHomeScreen> {
+  GoogleMapController? mapController;
+  final LatLng _binghamtonCenter = LatLng(42.0987, -75.9179);
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final List<LatLng> gpsPoints = [
+    LatLng(42.0987, -75.9179), // Court Street Bridge
+    LatLng(42.0991, -75.9120), // Boscov's
+    // Add 14 more GPS points (Binghamton route)
+  ];
+  List<Map<String, dynamic>> snacks = [];
+  bool isWithinRange = false;
+  String eta = 'Calculating...';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSnacks();
+    _checkUserLocation();
+    _loadTerms();
+  }
+
+  // Load snacks from Firestore
+  void _loadSnacks() async {
+    QuerySnapshot snapshot = await _firestore.collection('snacks').get();
+    setState(() {
+      snacks = snapshot.docs
+          .map((doc) => {'id': doc.id, ...doc.data() as Map<String, dynamic>})
+          .toList();
+    });
+  }
+
+  // Check if user is within 300 yards (274.32 meters) of any GPS point
+  void _checkUserLocation() async {
+    Position position = await Geolocator.getCurrentPosition();
+    for (LatLng point in gpsPoints) {
+      double distance = Geolocator.distanceBetween(
+        position.latitude,
+        position.longitude,
+        point.latitude,
+        point.longitude,
+      );
+      if (distance <= 274.32) {
+        setState(() => isWithinRange = true);
+        break;
+      }
+    }
+  }
+
+  // Load and accept Terms of Service
+  void _loadTerms() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      DocumentSnapshot userDoc = await _firestore.collection('users').doc(user.uid).get();
+      if (!(userDoc['acceptedTerms'] ?? false)) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Terms of Service'),
+            content: Text('Please accept the Terms of Service to continue.'),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  await _firestore.collection('users').doc(user.uid).update({'acceptedTerms': true});
+                  Navigator.pop(context);
+                },
+                child: Text('Accept'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+  }
+
+  // Request a ride
+  void _requestRide() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null && isWithinRange) {
+      DocumentReference rideRef = await _firestore.collection('rides').add({
+        'userId': user.uid,
+        'location': GeoPoint(42.0987, -75.9179), // Replace with user’s GPS
+        'status': 'pending',
+        'timestamp': FieldValue.serverTimestamp(),
+        'fare': 5.0, // Flat rate
+        'dropOffExtension': false,
+      });
+      // Simulate ETA calculation (replace with Google Maps API)
+      setState(() => eta = '5 minutes');
+      await _firestore.collection('notifications').add({
+        'userId': user.uid,
+        'message': 'Ride requested! ETA: $eta',
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ride requested!')));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Not within 300 yards of a stop')));
+    }
+  }
+
+  // Order a snack with Stripe payment
+  void _orderSnack(Map<String, dynamic> snack) async {
+    // Simulate Stripe payment (replace with Firebase Function for real payment)
+    await Stripe.instance.initPaymentSheet(
+      paymentSheetParameters: SetupPaymentSheetParameters(
+        paymentIntentClientSecret: 'your_stripe_secret',
+        merchantDisplayName: 'AirBear',
+      ),
+    );
+    await Stripe.instance.presentPaymentSheet();
+    await _firestore.collection('orders').add({
+      'userId': FirebaseAuth.instance.currentUser!.uid,
+      'snackId': snack['id'],
+      'price': snack['price'],
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${snack['name']} ordered!')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('AirBear', style: TextStyle(color: Colors.white)),
+        backgroundColor: Theme.of(context).primaryColor,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.history),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RideHistoryScreen())),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: GoogleMap(
+              initialCameraPosition: CameraPosition(target: _binghamtonCenter, zoom: 14),
+              markers: gpsPoints
+                  .map((point) => Marker(
+                        markerId: MarkerId(point.toString()),
+                        position: point,
+                        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+                      ))
+                  .toSet(),
+              onMapCreated: (controller) => mapController = controller,
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Text('ETA: $eta', style: TextStyle(fontSize: 16)),
+                SizedBox(height: 8),
+                ElevatedButton(
+                  onPressed: isWithinRange ? _requestRide : null,
+                  child: Text('Request Ride', style: TextStyle(fontSize: 18)),
+                  style: ElevatedButton.styleFrom(
+                    primary: Theme.of(context).primaryColor,
+                    minimumSize: Size(double.infinity, 50),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: snacks.length,
+              itemBuilder: (context, index) {
+                final snack = snacks[index];
+                return Card(
+                  margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: ListTile(
+                    leading: Icon(Icons.fastfood, color: Theme.of(context).accentColor),
+                    title: Text('${snack['name']} - \$${snack['price']}'),
+                    trailing: IconButton(
+                      icon: Icon(Icons.add_shopping_cart),
+                      onPressed: () => _orderSnack(snack),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Ride History Screen
+class RideHistoryScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Ride History')),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('rides')
+            .where('userId', isEqualTo: FirebaseAuth.instance.currentUser!.uid)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
+          var rides = snapshot.data!.docs;
+          return ListView.builder(
+            itemCount: rides.length,
+            itemBuilder: (context, index) {
+              var ride = rides[index];
+              return ListTile(
+                title: Text('Ride on ${ride['timestamp'].toDate()}'),
+                subtitle: Text('Fare: \$${ride['fare']}'),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
