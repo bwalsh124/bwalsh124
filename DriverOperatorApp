@@ -1,0 +1,103 @@
+dart
+
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+class DriverHomeScreen extends StatefulWidget {
+  @override
+  _DriverHomeScreenState createState() => _DriverHomeScreenState();
+}
+
+class _DriverHomeScreenState extends State<DriverHomeScreen> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  bool manualAcknowledged = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkManualAcknowledgment();
+  }
+
+  // Check if driver acknowledged manual today
+  void _checkManualAcknowledgment() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      DocumentSnapshot driverDoc = await _firestore.collection('drivers').doc(user.uid).get();
+      DateTime? lastAck = driverDoc['lastManualAck']?.toDate();
+      if (lastAck == null || lastAck.day != DateTime.now().day) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Driver Manual'),
+            content: Text('Please acknowledge the driver manual to start your shift.'),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  await _firestore.collection('drivers').doc(user.uid).update({
+                    'lastManualAck': FieldValue.serverTimestamp(),
+                  });
+                  setState(() => manualAcknowledged = true);
+                  Navigator.pop(context);
+                },
+                child: Text('Acknowledge'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        setState(() => manualAcknowledged = true);
+      }
+    }
+  }
+
+  // Accept a ride
+  void _acceptRide(String rideId) async {
+    await _firestore.collection('rides').doc(rideId).update({
+      'status': 'accepted',
+      'driverId': FirebaseAuth.instance.currentUser!.uid,
+    });
+    await _firestore.collection('notifications').add({
+      'userId': (await _firestore.collection('rides').doc(rideId).get())['userId'],
+      'message': 'Ride accepted by driver!',
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('AirBear Driver', style: TextStyle(color: Colors.white)),
+        backgroundColor: Theme.of(context).primaryColor,
+      ),
+      body: manualAcknowledged
+          ? StreamBuilder<QuerySnapshot>(
+              stream: _firestore.collection('rides').where('status', isEqualTo: 'pending').snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
+                var rides = snapshot.data!.docs;
+                return ListView.builder(
+                  itemCount: rides.length,
+                  itemBuilder: (context, index) {
+                    var ride = rides[index];
+                    return Card(
+                      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: ListTile(
+                        title: Text('Ride Request'),
+                        subtitle: Text('User: ${ride['userId']}'),
+                        trailing: ElevatedButton(
+                          onPressed: () => _acceptRide(ride.id),
+                          child: Text('Accept'),
+                          style: ElevatedButton.styleFrom(primary: Theme.of(context).accentColor),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            )
+          : Center(child: Text('Please acknowledge the driver manual.')),
+    );
+  }
+}
