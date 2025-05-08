@@ -1,0 +1,36 @@
+javascript
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /drivers/{driverId} {
+      allow read, write: if request.auth != null && request.auth.uid == driverId;
+    }
+    match /rides/{rideId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid ||
+        request.auth.token.role == 'admin'
+      );
+    }
+    match /snacks/{snackId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.role == 'admin';
+    }
+    match /gps_spots/{spotId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.role == 'admin';
+    }
+    match /orders/{orderId} {
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+    match /notifications/{notificationId} {
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow write: if request.auth != null;
+    }
+  }
+}
